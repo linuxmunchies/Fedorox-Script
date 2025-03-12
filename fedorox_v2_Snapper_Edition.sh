@@ -17,9 +17,26 @@ INSTALL_FILESHARING=true
 INSTALL_SYSTEMTOOLS=true
 INSTALL_CUSTOMIZATION=true
 
+# Root Check Function
+root_check() {
+    if [ "$(id -u)" -ne 0 ]; then
+       echo "This script must be run as root" 
+       exit 1
+    fi
+}
+
 # Logging function
 log_message() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" | tee -a "$ACTUAL_HOME/fedora_setup.log"
+}
+
+# Confirm Action Function 
+confirm_action() {
+    read -p "$1 (y/n): " response
+    case "$response" in
+        [yY][eE][sS]|[yY]) return 0 ;;
+        *) return 1 ;;
+    esac
 }
 
 # Error handling function
@@ -61,24 +78,49 @@ setup_repos() {
     log_message "Repositories setup completed successfully"
 }
 
-# System upgrade function
-system_upgrade() {
-    log_message "Performing system upgrade... This may take a while..."
-    # Create system snapshot before major changes
-    log_message "Creating system snapshot before major changes..."
+# Function to check if a subvolume exists
+check_subvol() {
+    sudo btrfs subvolume list / | grep -q -E " path ($1|@$1|@var_$1|var_$1)$"
+}
+
+snapshot_function() {
+    # Check critical directories
+    log_is_subvol=$(check_subvol "log" && echo "yes" || echo "no")
+    cache_is_subvol=$(check_subvol "cache" && echo "yes" || echo "no")
+
+    # Warn if not subvolumes
+    if [[ "$log_is_subvol" == "no" || "$cache_is_subvol" == "no" ]]; then
+        echo "WARNING: These directories are not BTRFS subvolumes:"
+        [[ "$log_is_subvol" == "no" ]] && echo "- /var/log"
+        [[ "$cache_is_subvol" == "no" ]] && echo "- /var/cache"
+        echo "This will make snapshots larger and may cause issues during rollbacks."
+        
+        read -p "Continue anyway? (yes/no): " answer
+        if [[ "$answer" != "yes" ]]; then
+            echo "Script terminated."
+            exit 1
+        fi
+    fi
+
+    # Create snapshots
+    echo "Creating system snapshots..."
     DATE=$(date +%Y-%m-%d-%H-%M-%S)
 
-    dnf install -y snapper
-
-    # Enable the timers and services
-    sudo systemctl enable --now snapper-timeline.timer
-    sudo systemctl enable --now snapper-cleanup.timer
+    # Install packages and set up snapper
+    sudo dnf install -y snapper libdnf5-plugin-actions
+    sudo systemctl enable --now snapper-timeline.timer snapper-cleanup.timer
     sudo snapper -c root create-config /
     sudo snapper -c home create-config /home
     sudo snapper -c root create -d "${DATE}_RootFirst" 
     sudo snapper -c home create -d "${DATE}_HomeFirst" 
 
     echo "Snapshots created: root-$DATE, home-$DATE"
+}
+
+# System upgrade function
+system_upgrade() {
+    log_message "Snapshotting then Performing system upgrade... This may take a while..."
+    snapshot_function
 
     # Perform system upgrade
     dnf upgrade -y
@@ -474,6 +516,7 @@ generate_summary() {
 log_message "Starting Fedora setup script..."
 
 # Execute functions in sequence
+root_check
 system_upgrade
 setup_repos
 configure_system
