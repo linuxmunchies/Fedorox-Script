@@ -285,7 +285,7 @@ install_essentials() {
     log_message "Installing essential applications..."
     
     # Install packages in a single command
-    dnf install -y btop htop rsync inxi fzf ncdu tmux fastfetch git wget curl neovim bat make unzip gcc go tldr
+    dnf install -y btop htop rsync inxi fzf ncdu tmux fastfetch git wget curl kitty bat make unzip gcc go tldr duf
 
     # Install rclone
     log_message "Installing rclone..."
@@ -300,6 +300,48 @@ install_essentials() {
     fi
     log_message "Essential applications installed successfully"
 }
+
+install_kickstart_nvim() {
+    echo "Installing kickstart.nvim"
+    
+    # Check if Neovim is installed
+    if ! command -v nvim &> /dev/null; then
+        echo "Neovim not found. Installing Neovim and dependencies..."
+        dnf install -y gcc make git ripgrep fd-find unzip neovim
+    else
+        echo "Neovim is already installed."
+    fi
+    
+    # Define Neovim config directory
+    NVIM_CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/nvim"
+    
+    # Backup existing configuration if it exists
+    if [ -d "$NVIM_CONFIG_DIR" ]; then
+        echo "Existing Neovim configuration found. Creating backup..."
+        BACKUP_DIR="$NVIM_CONFIG_DIR.backup.$(date +%Y%m%d%H%M%S)"
+        mv "$NVIM_CONFIG_DIR" "$BACKUP_DIR"
+        echo "Backup created at: $BACKUP_DIR"
+    fi
+    
+    # Clean any existing Neovim data
+    echo "Cleaning Neovim data directories..."
+    rm -rf ~/.local/share/nvim ~/.local/state/nvim ~/.cache/nvim
+    
+    # Install kickstart.nvim
+    echo "Installing kickstart.nvim..."
+    git clone https://github.com/nvim-lua/kickstart.nvim.git "$NVIM_CONFIG_DIR"
+    
+    # Verify installation
+    if [ -f "$NVIM_CONFIG_DIR/init.lua" ]; then
+        echo "✅ kickstart.nvim installed successfully!"
+        echo "Run 'nvim' to start using it. First run will install plugins automatically."
+        return 0
+    else
+        echo "❌ Installation failed. Please check for errors and try again."
+        return 1
+    fi
+}
+
 
 # Install browser applications function
 install_browsers() {
@@ -334,7 +376,7 @@ install_office() {
     log_message "Installing Office & Productivity applications..."
     
     # Install Office apps from Flathub
-    flatpak install -y flathub org.onlyoffice.desktopeditors md.obsidian.Obsidian
+    flatpak install -y flathub org.onlyoffice.desktopeditors md.obsidian.Obsidian net.ankiweb.Anki
     
     log_message "Office applications installed successfully"
 }
@@ -451,7 +493,7 @@ install_systemtools() {
     log_message "Installing System Tools applications..."
     
     # Install system tools from Flathub
-    flatpak install -y flathub io.missioncenter.MissionCenter com.github.tchx84.Flatseal com.mattjakeman.ExtensionManager com.usebottles.bottles net.davidotek.pupgui2 it.mijorus.gearlever org.gnome.DejaDup org.gnome.World.PikaBackup net.nokyan.Resources
+    flatpak install -y flathub io.missioncenter.MissionCenter com.github.tchx84.Flatseal com.usebottles.bottles net.davidotek.pupgui2 it.mijorus.gearlever org.gnome.DejaDup org.gnome.World.PikaBackup net.nokyan.Resources
     
     log_message "System tools installed successfully"
 }
@@ -517,6 +559,7 @@ log_message "Starting Fedora setup script..."
 
 # Execute functions in sequence
 root_check
+snapshot_function
 system_upgrade
 setup_repos
 configure_system
