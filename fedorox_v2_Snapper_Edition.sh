@@ -174,8 +174,8 @@ setup_cifs_mount() {
     MOUNT_POINT="/mnt/media"
     MOUNT_POINT2="/mnt/archives"
     CREDENTIALS_FILE="/etc/cifs-credentials"
-    FSTAB_ENTRY="$SHARE $MOUNT_POINT cifs credentials=$CREDENTIALS_FILE,vers=3.0,uid=$(id -u),gid=$(id -g),nofail 0 0"
-    FSTAB_ENTRY2="$SHARE2 $MOUNT_POINT2 cifs credentials=$CREDENTIALS_FILE,vers=3.0,uid=$(id -u),gid=$(id -g),nofail 0 0"
+    FSTAB_ENTRY="$SHARE $MOUNT_POINT cifs credentials=$CREDENTIALS_FILE,vers=3.0,uid=gitfox,gid=gitfox,nofail 0 0"
+    FSTAB_ENTRY2="$SHARE2 $MOUNT_POINT2 cifs credentials=$CREDENTIALS_FILE,vers=3.0,uid=gitfox,gid=gitfox,nofail 0 0"
     
     sudo dnf install -y cifs-utils
     
@@ -206,13 +206,13 @@ setup_cifs_mount() {
     fi   
     # Mount the share
     log_message "Mounting CIFS share..."
-    if ! sudo mount -t cifs "$SHARE" "$MOUNT_POINT" -o "credentials=$CREDENTIALS_FILE,vers=3.0,uid=$(id -u),gid=$(id -g),nofail"; then
+    if ! sudo mount -t cifs "$SHARE" "$MOUNT_POINT" -o "credentials=$CREDENTIALS_FILE,vers=3.0,uid=gitfox,gid=gitfox,nofail"; then
         log_message "ERROR: Failed to mount CIFS share"
         return 1
     fi
      # Mount the share
     log_message "Mounting CIFS share2..."
-    if ! sudo mount -t cifs "$SHARE2" "$MOUNT_POINT2" -o "credentials=$CREDENTIALS_FILE,vers=3.0,uid=$(id -u),gid=$(id -g),nofail"; then
+    if ! sudo mount -t cifs "$SHARE2" "$MOUNT_POINT2" -o "credentials=$CREDENTIALS_FILE,vers=3.0,uid=gitfox,gid=gitfox,nofail"; then
         log_message "ERROR: Failed to mount CIFS share"
         return 1
     fi
@@ -563,6 +563,7 @@ snapshot_function
 system_upgrade
 setup_repos
 configure_system
+install_kickstart_nvim
 setup_cifs_mount
 setup_multimedia
 setup_virtualization
