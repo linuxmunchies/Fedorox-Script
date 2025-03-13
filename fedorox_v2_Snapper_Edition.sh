@@ -313,7 +313,7 @@ install_kickstart_nvim() {
     fi
     
     # Define Neovim config directory
-    NVIM_CONFIG_DIR="home/gitfox/.config/nvim"
+    NVIM_CONFIG_DIR="/home/gitfox/.config/nvim"
     
     # Backup existing configuration if it exists
     if [ -d "$NVIM_CONFIG_DIR" ]; then
