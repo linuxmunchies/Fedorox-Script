@@ -211,7 +211,7 @@ install_gaming() {
     log "Installing gaming support..."
     
     # Install gaming utilities
-    dnf install -y mangohud goverlay gamemode steam vulkan-loader
+    dnf install -y mangohud lib32-mangohud goverlay gamemode lib32-gamemode steam vulkan-loader
     
     # ROCm packages if applicable
     if lspci | grep -i amd > /dev/null; then
@@ -222,6 +222,61 @@ install_gaming() {
     fi
     
     log_success "Gaming support installed"
+}
+
+# Mkdirs for ProtonDrive Function
+mkdir_proton() {
+  mkdir -p ~/ProtonDrive/Archives/{Discord,Obsidian} ~/ProtonDrive/Career/MainDocs/ && chown gitfox:gitfox ~/ProtonDrive/*
+  log_success "ProtonDrive directories created successfully"
+}
+
+
+# Setup game drive mount function
+setup_gamedrive_mount() {
+  log_message "Setting up game drive mount..."
+
+  # Set mount details
+  GAME_DRIVE_UUID="6c52f6b5-b3f3-49c6-a7cc-2793741afe35"
+  MOUNT_POINT="/mnt/gamedrive"
+  MOUNT_OPTIONS="rw,relatime,compress=zstd:3,nofail"
+  FSTAB_ENTRY="UUID=$GAME_DRIVE_UUID $MOUNT_POINT btrfs $MOUNT_OPTIONS 0 0"
+
+  # Check if drive exists using UUID
+  if ! blkid -U "$GAME_DRIVE_UUID" > /dev/null 2>&1; then
+    log_message "Game drive with UUID $GAME_DRIVE_UUID not detected, skipping mount setup"
+    return 0
+  fi
+
+  log_message "Game drive detected, proceeding with mount setup"
+
+  # Create mount point if it doesn't exist
+  if ! [ -d "$MOUNT_POINT" ]; then
+    log_message "Creating mount point at $MOUNT_POINT"
+    sudo mkdir -p "$MOUNT_POINT"
+  fi
+
+  # Mount the drive if not already mounted
+  if ! mount | grep -q "$MOUNT_POINT"; then
+    log_message "Mounting game drive to $MOUNT_POINT"
+    sudo mount -U "$GAME_DRIVE_UUID" "$MOUNT_POINT" -o "$MOUNT_OPTIONS"
+    if [ $? -ne 0 ]; then
+      log_message "ERROR: Failed to mount game drive"
+      return 1
+    fi
+  else
+    log_message "Game drive already mounted to $MOUNT_POINT"
+  fi
+
+  # Add to fstab if not already there
+  if ! grep -q "$GAME_DRIVE_UUID" /etc/fstab; then
+    log_message "Adding game drive to /etc/fstab for auto-mount on boot"
+    echo "$FSTAB_ENTRY" | sudo tee -a /etc/fstab > /dev/null
+  else
+    log_message "Game drive already in /etc/fstab"
+  fi
+  systemctl daemon-reload
+  log_message "Game drive mounted successfully and set up for auto-mount on boot"
+  return 0
 }
 
 install_flatpaks() {
@@ -335,10 +390,25 @@ change_to_zsh() {
     # Install Oh My Zsh
     su - $ACTUAL_USER -c 'sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended'
     
+    # Download .zshrc from GitHub
+    log "Downloading custom .zshrc from GitHub..."
+    curl -fsSL https://raw.githubusercontent.com/linuxmunchies/.zshrc/main/.zshrc -o "/tmp/.zshrc"
+    
+    # Back up existing .zshrc if it exists
+    if [ -f "$ACTUAL_HOME/.zshrc" ]; then
+        mv "$ACTUAL_HOME/.zshrc" "$ACTUAL_HOME/.zshrc.backup.$(date +%Y%m%d%H%M%S)"
+        log "Backed up existing .zshrc file"
+    fi
+    
+    # Move downloaded .zshrc to user's home directory
+    mv "/tmp/.zshrc" "$ACTUAL_HOME/.zshrc"
+    chown $ACTUAL_USER:$ACTUAL_USER "$ACTUAL_HOME/.zshrc"
+    chmod 644 "$ACTUAL_HOME/.zshrc"
+    
     # Change default shell
     chsh -s $(which zsh) $ACTUAL_USER
     
-    log_success "Zsh configured as default shell"
+    log_success "Zsh configured as default shell with custom .zshrc"
 }
 
 cleanup() {
@@ -392,8 +462,11 @@ main() {
     install_brave_browser
     install_flatpaks
     setup_cifs_mount
+    mkdir_proton
+    setup_gamedrive_mount
     install_kickstart_nvim
     change_to_zsh
+    setup_kde_dark_mode
     cleanup
     generate_summary
     
