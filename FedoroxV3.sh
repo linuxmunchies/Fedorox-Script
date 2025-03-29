@@ -210,7 +210,7 @@ install_gaming() {
     log "Installing gaming support..."
     
     # Install gaming utilities (fixed package names for Fedora)
-    dnf install -y mangohud goverlay gamemode steam vulkan-loader
+    dnf install -y mangohud goverlay gamemode steam vulkan-loader steam-devices
     
     # ROCm packages if applicable - using correct Fedora package names
     if lspci | grep -i amd > /dev/null; then
@@ -225,6 +225,64 @@ install_gaming() {
     fi
     
     log_success "Gaming support installed"
+}
+
+# Configure gaming performance tweaks
+setup_gaming_tweaks() {
+    log "Setting up gaming tweaks..."
+    
+    # Enable lower latency audio (check if pipewire is running)
+    if systemctl --user -M $ACTUAL_USER@ is-active --quiet pipewire; then
+        # Create pipewire config directory
+        PIPEWIRE_DIR="$ACTUAL_HOME/.config/pipewire"
+        mkdir -p "$PIPEWIRE_DIR/pipewire.conf.d"
+        
+        # Lower latency config
+        cat > "$PIPEWIRE_DIR/pipewire.conf.d/99-lowlatency.conf" << EOF
+{
+  "context.properties": {
+    "default.clock.rate": 48000,
+    "default.clock.quantum": 64,
+    "default.clock.min-quantum": 32,
+    "default.clock.max-quantum": 64
+  }
+}
+EOF
+        chown -R $ACTUAL_USER:$ACTUAL_USER "$PIPEWIRE_DIR"
+        log "Configured low-latency audio"
+    else
+        log_warning "Pipewire not running, skipping audio latency optimization"
+    fi
+    
+    # Install gamemode with correct configuration
+    if command -v gamemode-simulate-game &> /dev/null; then
+        # Create gamemode config directory
+        GAMEMODE_DIR="$ACTUAL_HOME/.config/gamemode"
+        mkdir -p "$GAMEMODE_DIR"
+        
+        # Create gamemode config file
+        cat > "$GAMEMODE_DIR/gamemode.ini" << EOF
+[general]
+renice=10
+ioprio=0
+inhibit_screensaver=1
+
+[gpu]
+apply_gpu_optimisations=1
+gpu_device=0
+amd_performance_level=high
+
+[custom]
+start=notify-send "GameMode started"
+end=notify-send "GameMode ended"
+EOF
+        chown -R $ACTUAL_USER:$ACTUAL_USER "$GAMEMODE_DIR"
+        log "Configured GameMode for optimal performance"
+    else
+        log_warning "GameMode not installed, skipping GameMode configuration"
+    fi
+    
+    log_success "Gaming tweaks applied successfully"
 }
 
 # Mkdirs for ProtonDrive Function
@@ -403,8 +461,6 @@ install_system_fonts() {
   
   log_success "System fonts installed successfully"
 }
-
-
 
 install_flatpaks() {
     log "Installing Flatpak applications..."
@@ -625,6 +681,7 @@ main() {
     setup_virtualization
     setup_multimedia
     install_gaming
+    setup_gaming_tweaks
     install_brave_browser
     install_flatpaks
     setup_cifs_mount
@@ -633,7 +690,6 @@ main() {
     setup_user_groups
     install_nerd_fonts
     install_system_fonts
-    setup_system_optimizations
     install_kickstart_nvim
     change_to_zsh
     setup_kde_dark_mode
