@@ -179,7 +179,7 @@ install_system_tools() {
     dnf install -y snapper fwupd cifs-utils samba-client btop htop \
                    fastfetch p7zip unzip git vim neovim curl wget fzf \
                    rsync lsof zsh gcc make python3-pip duf inxi ncdu \
-                   kitty bat wl-clipboard go tldr intel-gpu-tools
+                   kitty bat wl-clipboard go tldr intel-gpu-tools rclone
     
     
     # Install Rust
@@ -449,8 +449,8 @@ install_system_fonts() {
   # Install common system fonts
   dnf install -y liberation-fonts dejavu-fonts-all
   
-  # Install Microsoft compatible fonts
-  dnf install -y fontconfig-font-replacements cabextract
+  # Install Microsoft compatible fonts (X11 utils still needed for the installer)
+  dnf install -y cabextract xorg-x11-font-utils
   rpm -i https://downloads.sourceforge.net/project/mscorefonts2/rpms/msttcore-fonts-installer-2.6-1.noarch.rpm
   
   # Install other useful fonts
@@ -662,6 +662,37 @@ generate_summary() {
     fi
 }
 
+# Implement Intel CPU power monitoring fix
+setup_intel_powercap() {
+    log "Checking for Intel CPU and setting up power monitoring..."
+    
+    # Check if Intel CPU is present
+    if grep -q "Intel" /proc/cpuinfo; then
+        log "Intel CPU detected, configuring energy_uj permissions"
+        
+        # Fix current permissions
+        if [ -f "/sys/class/powercap/intel-rapl:0/energy_uj" ]; then
+            chmod o+r /sys/class/powercap/intel-rapl:0/energy_uj
+            log_success "Applied energy_uj permissions fix"
+            
+            # Create a persistent udev rule
+            cat > /etc/udev/rules.d/99-intel-rapl.rules << EOF
+# Make Intel RAPL energy_uj readable by all users
+SUBSYSTEM=="powercap", KERNEL=="intel-rapl:0", RUN+="/bin/chmod o+r /sys/class/powercap/intel-rapl:0/energy_uj"
+EOF
+            
+            # Reload udev rules
+            udevadm control --reload-rules
+            
+            log_success "Created persistent udev rule for Intel power monitoring access"
+        else
+            log_warning "Intel CPU detected but energy_uj file not found at expected location"
+        fi
+    else
+        log "No Intel CPU detected, skipping energy_uj permissions setup"
+    fi
+}
+
 # ----- Main Execution -----
 main() {
     log "Starting Fedora setup script..."
@@ -688,6 +719,7 @@ main() {
     mkdir_proton
     setup_gamedrive_mount
     setup_user_groups
+    setup_intel_powercap
     install_nerd_fonts
     install_system_fonts
     install_kickstart_nvim
