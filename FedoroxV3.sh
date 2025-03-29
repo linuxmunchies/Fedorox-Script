@@ -59,7 +59,7 @@ setup_repositories() {
     dnf install -y dnf-plugins-core
 
     # Remove unwanted repositories
-    log_message "Removing irrelevant repositories..."
+    log "Removing irrelevant repositories..."
     rm -f /etc/yum.repos.d/_copr:copr.fedorainfracloud.org:phracek:PyCharm.repo
     rm -f /etc/yum.repos.d/google-chrome.repo
     rm -f /etc/yum.repos.d/rpmfusion-nonfree-nvidia-driver.repo
@@ -72,7 +72,7 @@ setup_repositories() {
     
     # Setup Brave repository
     log "Setting up Brave browser repository..."
-    dnf config-manager --add-repo https://brave-browser-rpm-release.s3.brave.com/brave-browser.repo
+    dnf config-manager addrepo --from-repofile=https://brave-browser-rpm-release.s3.brave.com/brave-browser.repo
     rpm --import https://brave-browser-rpm-release.s3.brave.com/brave-core.asc
     
     # Setup Flatpak
@@ -164,9 +164,8 @@ setup_multimedia() {
     dnf swap -y mesa-va-drivers mesa-va-drivers-freeworld
     dnf swap -y mesa-vdpau-drivers mesa-vdpau-drivers-freeworld
     
-    # Install multimedia packages
-    dnf install -y gstreamer1-plugins-good gstreamer1-plugins-bad \
-                   gstreamer1-plugins-base gstreamer1-plugins-ugly \
+    # Install multimedia packages (fixed package names)
+    dnf install -y gstreamer1-plugins-{good,base} gstreamer1-plugins-bad-free \
                    ffmpeg yt-dlp vlc mpv strawberry mediainfo flac lame \
                    libmpeg2 x264 x265
     
@@ -176,11 +175,11 @@ setup_multimedia() {
 install_system_tools() {
     log "Installing system utilities..."
     
-    # Install system monitoring and utilities
+    # Install system monitoring and utilities (removed amdgpu_top)
     dnf install -y snapper fwupd cifs-utils samba-client btop htop \
                    fastfetch p7zip unzip git vim neovim curl wget fzf \
                    rsync lsof zsh gcc make python3-pip duf inxi ncdu \
-                   kitty bat wl-clipboard go tldr amdgpu_top intel-gpu-tools
+                   kitty bat wl-clipboard go tldr intel-gpu-tools
     
     
     # Install Rust
@@ -210,15 +209,19 @@ setup_virtualization() {
 install_gaming() {
     log "Installing gaming support..."
     
-    # Install gaming utilities
-    dnf install -y mangohud lib32-mangohud goverlay gamemode lib32-gamemode steam vulkan-loader
+    # Install gaming utilities (fixed package names for Fedora)
+    dnf install -y mangohud goverlay gamemode steam vulkan-loader
     
-    # ROCm packages if applicable
+    # ROCm packages if applicable - using correct Fedora package names
     if lspci | grep -i amd > /dev/null; then
-        log "AMD GPU detected, installing ROCm packages..."
-        dnf install -y rocm-core rocm-hip-libraries rocm-hip-runtime \
-                       rocm-hip-sdk rocm-ml-libraries rocm-ml-sdk \
-                       rocm-opencl-runtime rocm-opencl-sdk
+        log "AMD GPU detected, checking for ROCm packages..."
+        # Try to install ROCm core, which is more likely to be available
+        if dnf list rocm-opencl 2>/dev/null; then
+            log "Installing ROCm packages..."
+            dnf install -y rocm-opencl rocm-hip-devel rocm-clinfo --allowerasing
+        else
+            log_warning "ROCm packages not found in repositories, skipping"
+        fi
     fi
     
     log_success "Gaming support installed"
@@ -226,14 +229,14 @@ install_gaming() {
 
 # Mkdirs for ProtonDrive Function
 mkdir_proton() {
-  mkdir -p ~/ProtonDrive/Archives/{Discord,Obsidian} ~/ProtonDrive/Career/MainDocs/ && chown gitfox:gitfox ~/ProtonDrive/*
+  mkdir -p $ACTUAL_HOME/ProtonDrive/Archives/{Discord,Obsidian} $ACTUAL_HOME/ProtonDrive/Career/MainDocs/
+  chown -R $ACTUAL_USER:$ACTUAL_USER $ACTUAL_HOME/ProtonDrive
   log_success "ProtonDrive directories created successfully"
 }
 
-
 # Setup game drive mount function
 setup_gamedrive_mount() {
-  log_message "Setting up game drive mount..."
+  log "Setting up game drive mount..."
 
   # Set mount details
   GAME_DRIVE_UUID="6c52f6b5-b3f3-49c6-a7cc-2793741afe35"
@@ -243,41 +246,165 @@ setup_gamedrive_mount() {
 
   # Check if drive exists using UUID
   if ! blkid -U "$GAME_DRIVE_UUID" > /dev/null 2>&1; then
-    log_message "Game drive with UUID $GAME_DRIVE_UUID not detected, skipping mount setup"
+    log "Game drive with UUID $GAME_DRIVE_UUID not detected, skipping mount setup"
     return 0
   fi
 
-  log_message "Game drive detected, proceeding with mount setup"
+  log "Game drive detected, proceeding with mount setup"
 
   # Create mount point if it doesn't exist
   if ! [ -d "$MOUNT_POINT" ]; then
-    log_message "Creating mount point at $MOUNT_POINT"
-    sudo mkdir -p "$MOUNT_POINT"
+    log "Creating mount point at $MOUNT_POINT"
+    mkdir -p "$MOUNT_POINT"
   fi
 
   # Mount the drive if not already mounted
   if ! mount | grep -q "$MOUNT_POINT"; then
-    log_message "Mounting game drive to $MOUNT_POINT"
-    sudo mount -U "$GAME_DRIVE_UUID" "$MOUNT_POINT" -o "$MOUNT_OPTIONS"
+    log "Mounting game drive to $MOUNT_POINT"
+    mount -U "$GAME_DRIVE_UUID" "$MOUNT_POINT" -o "$MOUNT_OPTIONS"
     if [ $? -ne 0 ]; then
-      log_message "ERROR: Failed to mount game drive"
+      log_error "Failed to mount game drive"
       return 1
     fi
   else
-    log_message "Game drive already mounted to $MOUNT_POINT"
+    log "Game drive already mounted to $MOUNT_POINT"
   fi
 
   # Add to fstab if not already there
   if ! grep -q "$GAME_DRIVE_UUID" /etc/fstab; then
-    log_message "Adding game drive to /etc/fstab for auto-mount on boot"
-    echo "$FSTAB_ENTRY" | sudo tee -a /etc/fstab > /dev/null
+    log "Adding game drive to /etc/fstab for auto-mount on boot"
+    echo "$FSTAB_ENTRY" | tee -a /etc/fstab > /dev/null
   else
-    log_message "Game drive already in /etc/fstab"
+    log "Game drive already in /etc/fstab"
   fi
+  
+  # Reload systemd to recognize changes in fstab
   systemctl daemon-reload
-  log_message "Game drive mounted successfully and set up for auto-mount on boot"
+  
+  log "Game drive mounted successfully and set up for auto-mount on boot"
   return 0
 }
+
+# Add user to important groups for hardware access
+setup_user_groups() {
+  log "Adding user to important system groups..."
+  
+  # Check if render group exists
+  if getent group render > /dev/null; then
+    usermod -a -G render $ACTUAL_USER
+    log "Added user to render group"
+  else
+    log_warning "render group not found"
+  fi
+  
+  # Check if video group exists
+  if getent group video > /dev/null; then
+    usermod -a -G video $ACTUAL_USER
+    log "Added user to video group"
+  else
+    log_warning "video group not found"
+  fi
+  
+  # Additional useful groups
+  for GROUP in input dialout plugdev; do
+    if getent group $GROUP > /dev/null; then
+      usermod -a -G $GROUP $ACTUAL_USER
+      log "Added user to $GROUP group"
+    fi
+  done
+  
+  log_success "User groups setup completed"
+}
+
+# Install nerd fonts for programming and terminal use
+install_nerd_fonts() {
+  log "Installing Nerd Fonts..."
+  
+  # Create fonts directory if it doesn't exist
+  FONTS_DIR="$ACTUAL_HOME/.local/share/fonts"
+  mkdir -p "$FONTS_DIR"
+  
+  # Temporary directory for downloads
+  TEMP_DIR=$(mktemp -d)
+  cd "$TEMP_DIR"
+  
+  # Download and install Hack Nerd Font
+  log "Downloading Hack Nerd Font..."
+  wget -q https://github.com/ryanoasis/nerd-fonts/releases/download/v3.0.2/Hack.zip
+  if [ -f "Hack.zip" ]; then
+    unzip -q Hack.zip -d "$FONTS_DIR/Hack"
+    log "Installed Hack Nerd Font"
+  else
+    log_error "Failed to download Hack Nerd Font"
+  fi
+  
+  # Download and install FiraCode Nerd Font
+  log "Downloading FiraCode Nerd Font..."
+  wget -q https://github.com/ryanoasis/nerd-fonts/releases/download/v3.0.2/FiraCode.zip
+  if [ -f "FiraCode.zip" ]; then
+    unzip -q FiraCode.zip -d "$FONTS_DIR/FiraCode"
+    log "Installed FiraCode Nerd Font"
+  else
+    log_error "Failed to download FiraCode Nerd Font"
+  fi
+  
+  # Download and install JetBrainsMono Nerd Font (as an additional font)
+  log "Downloading JetBrainsMono Nerd Font..."
+  wget -q https://github.com/ryanoasis/nerd-fonts/releases/download/v3.0.2/JetBrainsMono.zip
+  if [ -f "JetBrainsMono.zip" ]; then
+    unzip -q JetBrainsMono.zip -d "$FONTS_DIR/JetBrainsMono"
+    log "Installed JetBrainsMono Nerd Font"
+  else
+    log_error "Failed to download JetBrainsMono Nerd Font"
+  fi
+  
+  # Download and install CascadiaCode Nerd Font (as an additional font)
+  log "Downloading CascadiaCode Nerd Font..."
+  wget -q https://github.com/ryanoasis/nerd-fonts/releases/download/v3.0.2/CascadiaCode.zip
+  if [ -f "CascadiaCode.zip" ]; then
+    unzip -q CascadiaCode.zip -d "$FONTS_DIR/CascadiaCode"
+    log "Installed CascadiaCode Nerd Font"
+  else
+    log_error "Failed to download CascadiaCode Nerd Font"
+  fi
+  
+  # Clean up
+  cd - > /dev/null
+  rm -rf "$TEMP_DIR"
+  
+  # Update font cache
+  fc-cache -f
+  
+  # Fix ownership
+  chown -R $ACTUAL_USER:$ACTUAL_USER "$FONTS_DIR"
+  
+  log_success "Nerd Fonts installed successfully"
+}
+
+# Install system fonts for better web and document support
+install_system_fonts() {
+  log "Installing system fonts..."
+  
+  # Install Google fonts
+  dnf install -y google-noto-sans-fonts google-noto-serif-fonts google-noto-cjk-fonts google-noto-emoji-fonts
+  
+  # Install common system fonts
+  dnf install -y liberation-fonts dejavu-fonts-all
+  
+  # Install Microsoft compatible fonts
+  dnf install -y fontconfig-font-replacements cabextract
+  rpm -i https://downloads.sourceforge.net/project/mscorefonts2/rpms/msttcore-fonts-installer-2.6-1.noarch.rpm
+  
+  # Install other useful fonts
+  dnf install -y ibm-plex-fonts-all mozilla-fira-fonts-common mozilla-fira-sans-fonts mozilla-fira-mono-fonts
+  
+  # Install international fonts
+  dnf install -y wqy-zenhei-fonts vlgothic-fonts smc-fonts-common lohit-assamese-fonts lohit-bengali-fonts
+  
+  log_success "System fonts installed successfully"
+}
+
+
 
 install_flatpaks() {
     log "Installing Flatpak applications..."
@@ -288,7 +415,7 @@ install_flatpaks() {
     
     # Browsers and communication
     flatpak install -y flathub io.gitlab.librewolf-community app.zen_browser.zen \
-                             im.riot.Riot org.telegram.desktop
+                             im.riot.Riot org.telegram.desktop dev.vencord.Vesktop
     
     # Media applications
     flatpak install -y flathub com.github.iwalton3.jellyfin-media-player \
@@ -358,11 +485,20 @@ setup_cifs_mount() {
         echo "$FSTAB_ENTRY" >> /etc/fstab
     fi
     
+    # Reload systemd to recognize changes in fstab
+    systemctl daemon-reload
+    
     log_success "CIFS share mounted and set up for auto-mount on boot"
 }
 
 install_kickstart_nvim() {
     log "Setting up Kickstart Neovim..."
+    
+    # Make sure git is installed
+    if ! command -v git &>/dev/null; then
+        log "Git not found, installing..."
+        dnf install -y git
+    fi
     
     # Define Neovim config directory
     NVIM_CONFIG_DIR="$ACTUAL_HOME/.config/nvim"
@@ -387,6 +523,12 @@ install_kickstart_nvim() {
 change_to_zsh() {
     log "Setting up Zsh..."
     
+    # Check if zsh is installed, if not install it
+    if ! command -v zsh &>/dev/null; then
+        log "Zsh not found, installing..."
+        dnf install -y zsh
+    fi
+    
     # Install Oh My Zsh
     su - $ACTUAL_USER -c 'sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended'
     
@@ -405,10 +547,34 @@ change_to_zsh() {
     chown $ACTUAL_USER:$ACTUAL_USER "$ACTUAL_HOME/.zshrc"
     chmod 644 "$ACTUAL_HOME/.zshrc"
     
-    # Change default shell
-    chsh -s $(which zsh) $ACTUAL_USER
+    # Get full path to zsh
+    ZSH_PATH=$(which zsh)
     
-    log_success "Zsh configured as default shell with custom .zshrc"
+    # Change default shell for user only if zsh path is valid
+    if [ -n "$ZSH_PATH" ]; then
+        chsh -s "$ZSH_PATH" $ACTUAL_USER
+        log_success "Zsh configured as default shell with custom .zshrc"
+    else
+        log_error "Could not find zsh path. Shell not changed."
+    fi
+}
+
+setup_kde_dark_mode() {
+    log "Setting up KDE dark mode..."
+    
+    # Check if KDE is installed
+    if ! rpm -q plasma-desktop &>/dev/null; then
+        log_warning "KDE Plasma not detected, skipping dark mode setup"
+        return
+    fi
+    
+    # Set dark mode and theme for the user using lookandfeeltool
+    if command -v lookandfeeltool &>/dev/null; then
+        su - $ACTUAL_USER -c 'lookandfeeltool -a org.kde.breezedark.desktop'
+        log_success "KDE dark mode configured"
+    else
+        log_warning "lookandfeeltool not found, skipping KDE dark mode setup"
+    fi
 }
 
 cleanup() {
@@ -464,6 +630,10 @@ main() {
     setup_cifs_mount
     mkdir_proton
     setup_gamedrive_mount
+    setup_user_groups
+    install_nerd_fonts
+    install_system_fonts
+    setup_system_optimizations
     install_kickstart_nvim
     change_to_zsh
     setup_kde_dark_mode
