@@ -479,7 +479,7 @@ install_flatpaks() {
                              org.kde.gwenview com.obsproject.Studio \
                              org.nickvision.tubeconverter \
                              org.kde.kdenlive org.blender.Blender org.kde.krita \
-                             com.mastermindzh.tidal-hifi com.spotify.Client
+                             com.mastermindzh.tidal-hifi com.spotify.Client
     
     # Gaming
     flatpak install -y flathub net.lutris.Lutris com.heroicgameslauncher.hgl \
@@ -716,6 +716,7 @@ main() {
     setup_gaming_tweaks
     install_brave_browser
     install_flatpaks
+    # Double for Dual Mounts
     setup_cifs_mount
     setup_cifs_mount
     mkdir_proton
