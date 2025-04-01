@@ -242,9 +242,9 @@ setup_gaming_tweaks() {
 {
   "context.properties": {
     "default.clock.rate": 48000,
-    "default.clock.quantum": 64,
-    "default.clock.min-quantum": 32,
-    "default.clock.max-quantum": 64
+    "default.clock.quantum": 256,
+    "default.clock.min-quantum": 256, 
+    "default.clock.max-quantum": 1024
   }
 }
 EOF
@@ -478,7 +478,8 @@ install_flatpaks() {
                              tv.plex.PlexDesktop com.plexamp.Plexamp \
                              org.kde.gwenview com.obsproject.Studio \
                              org.nickvision.tubeconverter \
-                             org.kde.kdenlive org.blender.Blender org.kde.krita
+                             org.kde.kdenlive org.blender.Blender org.kde.krita \
+                             com.mastermindzh.tidal-hifi com.spotify.Client
     
     # Gaming
     flatpak install -y flathub net.lutris.Lutris com.heroicgameslauncher.hgl \
@@ -716,6 +717,7 @@ main() {
     install_brave_browser
     install_flatpaks
     setup_cifs_mount
+    setup_cifs_mount
     mkdir_proton
     setup_gamedrive_mount
     setup_user_groups
@@ -734,4 +736,3 @@ main() {
 
 # Run the main function
 main
-
